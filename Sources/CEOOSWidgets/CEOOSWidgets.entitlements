@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The widget reads the shared store. It opens it WITHOUT CloudKit
+	     (see ModelContainerFactory.Role.readOnlyExtension) — it displays what
+	     the app has already synced and never syncs on its own. The iCloud
+	     entitlement is still present so the store's CloudKit metadata is
+	     readable rather than tripping a permissions error. -->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.kambojventures.ceoos</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.kambojventures.ceoos</string>
+	</array>
+</dict>
+</plist>

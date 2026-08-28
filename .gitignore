@@ -1,0 +1,20 @@
+# Xcode
+build/
+DerivedData/
+*.xcodeproj
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
+xcuserdata/
+*.xcuserstate
+
+# XcodeGen output is regenerated from project.yml — never committed.
+
+# Local signing config (per-machine; never committed)
+Config/Local.xcconfig
+
+# macOS
+.DS_Store
+
+# Swift
+.swiftpm/
+.build/

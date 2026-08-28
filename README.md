@@ -6,7 +6,7 @@ Native Apple stack: Swift · SwiftUI · SwiftData · CloudKit · EventKit · App
 
 ## Status
 
-**Design phase.** No application code yet. Architecture v1.1 — all blocking questions resolved (see the Decisions table in the doc); Phase 0 is unblocked.
+**Phase 0 in progress** — slice 1 (project scaffold, schema v1, persistence) is written but has not yet been compiled; see `docs/02-phase-0-setup.md`. Architecture v1.1 — all blocking questions resolved (see the Decisions table in the doc); Phase 0 is unblocked.
 
 ## Settled decisions
 
@@ -17,6 +17,20 @@ Native Apple stack: Swift · SwiftUI · SwiftData · CloudKit · EventKit · App
 ## Documents
 
 - [`docs/01-architecture.md`](docs/01-architecture.md) — product architecture, technical architecture, data model, screen map, sync/source-of-truth strategy, Siri architecture, notification logic, build order, risks, and open questions.
+- [`docs/02-phase-0-setup.md`](docs/02-phase-0-setup.md) — how to generate the Xcode project and verify the foundation.
+
+## Build
+
+```bash
+brew install xcodegen
+cp Config/Local.xcconfig.template Config/Local.xcconfig   # add your Team ID
+xcodegen generate
+open CEOOS.xcodeproj
+```
+
+Requires Xcode 26 and a paid Apple Developer account (App Groups, CloudKit, and
+widgets are unavailable on a free one). Run `⌘U` before `⌘R` — the tests build
+the entire schema in memory and catch model mistakes without a device.
 
 ## Core idea
 

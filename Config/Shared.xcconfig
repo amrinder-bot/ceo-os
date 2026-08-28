@@ -1,0 +1,11 @@
+// CEO OS — shared build configuration.
+//
+// Signing identity is per-machine and is NOT committed. Copy Local.xcconfig.template
+// to Local.xcconfig and put your Apple Developer Team ID in it.
+
+#include? "Local.xcconfig"
+
+// Warnings we want to hear about.
+GCC_TREAT_WARNINGS_AS_ERRORS = NO
+SWIFT_TREAT_WARNINGS_AS_ERRORS = NO
+CLANG_WARN_DOCUMENTATION_COMMENTS = YES

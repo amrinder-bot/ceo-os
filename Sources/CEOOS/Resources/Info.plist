@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+
+	<!-- Deep links. Every notification, widget tap, Spotlight result and Siri
+	     result routes through ceoos://<type>/<uuid>. Registered now because
+	     retrofitting deep links into an ad-hoc navigation structure is a
+	     rewrite, not an addition. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.kambojventures.ceoos.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ceoos</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- Permission strings. Every one of these is a screen the user will read,
+	     so they say what CEO OS does with the data, not what the API is called. -->
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>CEO OS shows today's meetings, finds your free time, and warns you about double-bookings. It only writes to the calendar you choose for focus blocks, and never edits events it did not create.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>CEO OS adds focus blocks to the calendar you choose. It never edits events it did not create.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>CEO OS mirrors the tasks you choose into Apple Reminders, and picks up anything you add to your CEO OS Inbox list. It never deletes a task because a reminder disappeared.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>CEO OS can fill in a person's details from your contacts when you add them. Nothing is uploaded and no contact is changed.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CEO OS records voice captures so you can get a thought out of your head in a few seconds.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>CEO OS transcribes your voice captures on this device so it can pick out the person, company, and date you mentioned.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>CEO OS uses Face ID to unlock. This database holds business information you would not want read by whoever picks up your phone.</string>
+
+	<!-- remote-notification: CloudKit mirroring uses silent pushes.
+	     fetch/processing: refreshing the rolling notification window. Both are
+	     optimisations — nothing in the app depends on a background run having
+	     happened. See Section 8 of the architecture document. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.kambojventures.ceoos.refresh</string>
+		<string>com.kambojventures.ceoos.maintenance</string>
+	</array>
+
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>
