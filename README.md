@@ -6,7 +6,13 @@ Native Apple stack: Swift · SwiftUI · SwiftData · CloudKit · EventKit · App
 
 ## Status
 
-**Design phase.** No application code yet.
+**Design phase.** No application code yet. Architecture v1.1 — all blocking questions resolved (see the Decisions table in the doc); Phase 0 is unblocked.
+
+## Settled decisions
+
+- **iOS 26 minimum**, single user. Unlocks on-device Foundation Models for private AI.
+- **Google Calendar is read through EventKit** (Workspace account added in iOS Settings), not the Google API. Removes OAuth, token storage, and the duplication problem from the roadmap.
+- **Team access is a likely future.** Phase 1 stays single-user on CloudKit private; six forward-compatibility hooks land in schema v1.
 
 ## Documents
 

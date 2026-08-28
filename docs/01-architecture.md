@@ -1,8 +1,25 @@
 # CEO OS — Product & Technical Architecture
 
-**Version:** 1.0 (pre-implementation)
+**Version:** 1.1 (pre-implementation)
 **Platform:** iOS first (iPhone), then iPad / Mac / Apple Watch
 **Status:** Design document. No code written yet.
+
+---
+
+## DECISIONS
+
+Answered questions become decisions. These are settled; the sections below reflect them.
+
+| # | Decision | Consequence |
+|---|---|---|
+| **D1** | **Minimum OS is iOS 26.** Single user, current devices. | On-device Foundation Models (Tier 1 AI) is available in Phase 2 with zero data egress. Current App Intents and SwiftData. No compatibility branches. |
+| **D2** | **Google Calendar is read through EventKit, not the Google API.** The Workspace account is added in iOS Settings → Calendar; Google stays the primary calendar and CEO OS reads it natively. | The Google API integration is **removed from the MVP and from Phase 2's default scope.** No OAuth, no token storage, no API quota, no duplication problem. See Section 6 for the setup steps and the four capabilities this gives up. |
+| **D3** | **Team access is a likely future, not a hypothetical.** Phase 1 stays single-user on the CloudKit private database. | Six low-cost forward-compatibility hooks land in Phase 0 (Appendix C). The team architecture becomes an explicit decision point after Phase 1, not an assumption baked in now. |
+| **D4** | **Apple Reminders is two-way via a dedicated inbox list** — my recommendation, adopted. | Siri-to-Reminders keeps working as a capture path even if CEO OS is broken. |
+| **D5** | **You choose the Top 3 each morning from a proposed list** — my recommendation, adopted. | The Attention Engine proposes; you confirm with one tap. It never silently sets your priorities. |
+| **D6** | **Delegation notifications offer a Nudge action** — my recommendation, adopted. | CEO OS composes a pre-filled message to the delegate. You always press send. |
+
+Still open, and deliberately deferred until they matter: the cloud AI tier (Phase 2) and the Google Cloud project setup (only if D2 is ever revisited). Neither blocks Phase 0 or Phase 1.
 
 ---
 
@@ -190,7 +207,7 @@ Navigation: five tabs — **Home · Projects · Capture · Tasks · More**. Capt
 | 22 | **Companies** | List + Company Detail: pulse, projects, people, open items. |
 | 23 | **People** | List + Person Detail: "what is Rafael working on / owes me." |
 | 24 | **Goals** | Quarterly/annual, linked to projects. |
-| 25 | **Settings** | General · Companies · Notifications · Calendars · Reminders · Integrations · Security · Data & Diagnostics. |
+| 25 | **Settings** | General · Companies · Notifications · **Calendars** (every calendar EventKit can see, its source, and the write target for focus blocks) · Reminders · Security · Data & Diagnostics. |
 
 ### System / state screens (built in Phase 0, not bolted on later)
 
@@ -439,6 +456,8 @@ All targets share one **App Group** (`group.com.kamboj.ceoos`) so the SwiftData 
 
 ### EventKit
 
+Under D2, EventKit is the **only** calendar integration in the product. Apple, iCloud, and Google calendars all arrive through the same API, are stored as the same `CalendarEventLink`, and are rendered by the same schedule view. There is no per-provider code path.
+
 Two separate authorisation surfaces with independent, non-blocking permission states:
 
 - **Calendar** — request `.fullAccess` (needed to read existing events and detect conflicts). If only write access is granted, the app degrades gracefully: focus blocks still work; the schedule view shows a permission card.
@@ -469,11 +488,9 @@ The scheduling model and the interruption budget are in Section 8.
 
 ### Google Calendar
 
-- OAuth 2.0 **Authorization Code + PKCE** via `ASWebAuthenticationSession`. No embedded web view, no client secret in the binary.
-- Scopes requested at minimum: `calendar.readonly` at connect time; `calendar.events` only escalated when you first ask to create a Google-side event.
-- Tokens in Keychain, `ThisDeviceOnly`, never synced.
-- Incremental sync with `syncToken`; full resync on `410 GONE`.
-- **Read path is conditional** — if a Google calendar is already mirrored into Apple Calendar on your device, CEO OS reads it via EventKit and does *not* call the Google API for it. See Section 6.
+**No Google integration code ships in the MVP (D2).** Google calendars arrive through EventKit like any other calendar, so there is no OAuth flow, no token storage, no API client, no sync token, and no rate limit to handle. The `IntegrationAccount` entity stays in schema v1 as an unused shell so that adding the API later is additive rather than a migration.
+
+If it is ever added, the design is fixed in advance: OAuth 2.0 **Authorization Code + PKCE** via `ASWebAuthenticationSession` (no embedded web view, no client secret in the binary); `calendar.readonly` at connect time with `calendar.events` escalated only on first Google-side write; tokens in the Keychain, `ThisDeviceOnly`, never synced; incremental sync by `syncToken` with a full resync on `410 GONE`; and the conditional read path plus dedup keys in Section 6.
 
 ### Authentication & security
 
@@ -533,8 +550,8 @@ You: "What am I forgetting?"
 | Focus blocks & CEO OS-created events | **CEO OS owns the intent; EventKit holds the event** | Link record | Yes, to the CEO OS calendar only | The only events CEO OS may edit |
 | Reminders (existing, outside the CEO OS list) | **Apple Reminders** | No | No | Read-only, never imported unless you act |
 | Reminders mirroring a CEO OS task | **CEO OS** for content; Reminders for completion | Link record | Yes | See loop-prevention below |
-| Google Calendar events | **Google** | Pointer + cache only | No | Read; write only on explicit action |
-| OAuth tokens | **Keychain, per device** | **No — explicitly excluded** | No | Never synced |
+| Google Calendar events | **Google**, read via EventKit (D2) | Pointer + cache only | No | Identical handling to any other EventKit calendar. No direct API in the MVP. |
+| OAuth tokens | **Keychain, per device** | **No — explicitly excluded** | No | Never synced. Not applicable in the MVP under D2 — there are no tokens to hold. |
 | Audio capture files | Local + CloudKit as `.externalStorage` | Yes | No | Deleted after transcription confirm |
 
 ### CloudKit conflict resolution
@@ -580,16 +597,52 @@ This is where most integrations of this kind break, so the rules are absolute:
 - Editing or deleting an event CEO OS did not create is blocked at the service layer, not just hidden in the UI.
 - Meeting↔project linking is a suggestion, never an edit to the event. The link is stored on the CEO OS side. Your calendar is never annotated.
 
-### Google Calendar — deduplication
+### Google Calendar (D2)
 
-The critical question: **is this Google calendar already flowing into Apple Calendar on this device?** If yes, calling the Google API for it creates a second copy of every event.
+**Current state:** your Google calendars are not in Apple Calendar today, and Google Calendar is where you want to keep living. Both of those are compatible with the simplest possible integration.
+
+**The decision: add the Google Workspace account in iOS Settings → Calendar.** iOS syncs it over CalDAV, and EventKit then reads every selected Google calendar natively. Google remains your primary calendar; CEO OS is a reader, exactly as it is for any Apple calendar.
+
+What this buys, versus building the Google API integration:
+
+| | EventKit route (D2) | Direct Google API |
+|---|---|---|
+| Code to write | **None** — the Phase 1 calendar layer already covers it | An OAuth flow, token refresh, incremental sync, an offline cache, error handling |
+| Offline | Works — iOS caches locally | Only what we cache ourselves |
+| Tokens to protect | **None** | Refresh tokens on every device |
+| Duplication risk | **None** — one read path | The full problem described below |
+| Sync latency | Push, typically under a minute | Push channels or polling |
+| Cost | Free | API quota + a Cloud project to maintain |
+
+**Setup, in order — this is the part that goes wrong:**
+
+1. Add the account: Settings → Apps → Calendar → Accounts → Add Account → Google.
+2. **Go to `google.com/calendar/syncselect` on that account and tick every calendar you want CEO OS to see.** Secondary calendars and calendars shared with you are **off by default** and will simply not exist as far as iOS is concerned. This single step is the most common cause of "why can't the app see my calendar."
+3. Create a calendar named **CEO OS** in Google Calendar on the web, and tick it in syncselect too. This is the focus-block write target — see below.
+
+CEO OS makes step 2 self-diagnosing: **Settings → Calendars lists every calendar EventKit can see, with its source.** A calendar missing from that list is visibly missing, rather than mysteriously absent from your schedule.
+
+**Why the CEO OS calendar has to be created in Google, not by the app.** iOS cannot create a new calendar on a CalDAV account — it can only create events within calendars that already exist there. So CEO OS does not create its calendar; it asks you to choose a write target once, from `calendars(for: .event)` filtered to `allowsContentModifications`, defaulting to one named "CEO OS" if it finds one. If you skip step 3, it offers a **local, on-device calendar** instead and labels it clearly as not syncing to Google. Either way the target is shown on every write, and CEO OS never picks one silently.
+
+**What this route gives up.** Be clear-eyed about it — these are the four things CalDAV does not carry, and any of them becoming necessary is the trigger to revisit D2:
+
+- Creating **Google Meet links** on events CEO OS creates
+- Guest permission control and "notify guests" semantics on invitations
+- **Free/busy lookup for other people** (which would be needed for real scheduling assistance)
+- Working locations, out-of-office, and appointment schedules
+
+None of these are needed for Today's schedule, conflict detection, meeting↔project linking, or focus blocks — which is the entire calendar surface of the MVP.
+
+### If the direct Google API is ever added — deduplication
+
+Not in the MVP. Recorded here because the moment the API is added, Google *will* also be mirrored into EventKit (D2), and the app would otherwise show every event twice. This design is what makes that a safe, additive change rather than a rewrite.
 
 **Detection, at connect time and on every sync:**
 
 1. Enumerate `EKSource`s. Any source of type `.calDAV`/`.exchange`/`.subscribed` whose title or account matches a connected Google account is a *mirror source*.
 2. For each Google calendar you select, look for an EventKit calendar in a mirror source whose title matches, or that contains events whose `calendarItemExternalIdentifier` matches the Google `iCalUID` for a sample window.
 3. Classify each Google calendar as **`mirroredInEventKit`** or **`directOnly`**.
-4. **Mirrored calendars are read exclusively through EventKit.** The Google API is used for them only to write, and only when you explicitly create/edit a Google-side event.
+4. **Mirrored calendars are read exclusively through EventKit.** The Google API is used for them only to write, and only when you explicitly create or edit a Google-side event.
 5. `directOnly` calendars are fetched via the API and merged into the schedule view, tagged with their source.
 
 **The dedup key, in priority order:**
@@ -600,9 +653,9 @@ The critical question: **is this Google calendar already flowing into Apple Cale
 | 2 | `iCalUID` + `originalStartTime` | Required for recurring series — every instance shares a UID, so the occurrence start disambiguates |
 | 3 | Fuzzy fingerprint: `normalizedTitle` + `startInstant` + `durationMinutes` + `organizerEmail` | Fallback for events whose UID was rewritten in transit (some Exchange/relay paths do this) |
 
-Fuzzy matches are **collapsed in the UI but flagged internally**, and Diagnostics lists them, so a bad heuristic is visible rather than silently hiding a real event. Two events that are genuinely distinct but look identical is a far worse failure than showing a duplicate once.
+Fuzzy matches are **collapsed in the UI but flagged internally**, and Diagnostics lists them, so a bad heuristic is visible rather than silently hiding a real event. Two genuinely distinct events that look identical is a far worse failure than showing one duplicate.
 
-**Write policy:** Google-side writes require explicit action. CEO OS never mirrors its tasks or focus blocks into Google automatically. Focus blocks go to the Apple "CEO OS" calendar; if that account is itself Google-backed, they appear in Google naturally, with no second write path.
+**Write policy:** Google-side writes would require explicit action. CEO OS never mirrors its tasks or focus blocks into Google automatically. Focus blocks go to the chosen EventKit write target; when that target is Google-backed, they appear in Google naturally, through one write path only.
 
 ---
 
@@ -756,7 +809,8 @@ Your proposed roadmap is close. I am changing it in six places, and the reasons 
 | **Attention Engine before the Dashboard** | The dashboard, notifications, brief, widget, and AI all render the same signals. Building the dashboard first means writing that logic in a view and then extracting it — twice. |
 | **Calendar read before Reminders write** | Reading is low-risk and the dashboard needs Today. Reminders is the first two-way sync and should be built after the `ExternalLink` pattern is proven by the simpler calendar case. |
 | **Widgets moved into Phase 1** | Once the App Group and Attention Engine exist, the widget is roughly a day of work and is one of the highest-value surfaces for your actual problem (not opening the app and still knowing). Deferring it to Phase 2 is leaving value on the table. |
-| **Google Calendar stays in Phase 2, and may not be needed at all** | If your Google calendars already sync into Apple Calendar (very likely, given a Workspace account on an iPhone), EventKit already gives you read access. Direct API integration then only buys Google-side writes. See Question 2. |
+| **Google Calendar drops out of the roadmap entirely (D2)** | Adding the Workspace account to iOS Calendar gives EventKit full read access to Google with no integration code at all. The direct API only buys four things CalDAV cannot carry (Section 6), none of which the MVP needs. It returns only on a concrete trigger. |
+| **Phase 0 gains team-readiness hooks (D3)** | Team access is now a likely future rather than a hypothetical. Six schema-v1 fields and one architectural rule remove the expensive migrations later, without building any multi-user feature now. See Appendix C. |
 
 ### Phase 0 — Foundations *(do not skip; ~1 week)*
 
@@ -768,6 +822,7 @@ Your proposed roadmap is close. I am changing it in six places, and the reasons 
 | 0.4 | App shell, 5 tabs, typed `Codable` navigation path, `DeepLinkRouter` | `ceoos://project/<uuid>` opens the right screen from cold launch |
 | 0.5 | State infrastructure: `PermissionGate`, `EmptyState`, `ErrorState`, offline banner, sync status | Every permission can be denied and the app still works |
 | 0.6 | App lock (Face ID + grace period + switcher blur) | Locks and unlocks reliably; never locks you out |
+| 0.7 | Team-readiness hooks (Appendix C) | Ownership fields, repository protocols, and visibility defaults present in schema v1 |
 
 ### Phase 1 — MVP *(the reliable core)*
 
@@ -783,8 +838,8 @@ Your proposed roadmap is close. I am changing it in six places, and the reasons 
 | 8 | **CEO Dashboard** | Renders the engine. First time the product feels real. |
 | 9 | **Universal Capture** | Deterministic parser only (no model yet), confirmation sheet, Inbox |
 | 10 | **Global Search** | All entity types, grouped results |
-| 11 | **Apple Calendar (read)** | Today, schedule, conflict detection, meeting↔project linking |
-| 12 | **Focus blocks (write)** | First EventKit write. CEO OS-owned calendar only. |
+| 11 | **Calendar (read) — Apple *and* Google via EventKit** | Today, schedule, conflict detection, meeting↔project linking, and the self-diagnosing Calendars settings screen |
+| 12 | **Focus blocks (write)** | First EventKit write. Explicitly chosen write target only (Section 6). |
 | 13 | **Apple Reminders mirror** | The full anti-duplication contract from Section 6 |
 | 14 | **App Intents / Siri** | `QuickCaptureIntent` first, then the typed and query intents |
 | 15 | **Notifications** | The gate, the budget, rolling-window scheduling |
@@ -797,12 +852,13 @@ Your proposed roadmap is close. I am changing it in six places, and the reasons 
 
 18. Meetings: prep cards and the debrief flow
 19. Weekly CEO Review (guided)
-20. On-device AI classification (Tier 1) layered onto the existing parser
-21. Google Calendar (only if Question 2 says it is needed)
-22. AI Chief of Staff (Tier 2, opt-in, tool-calling with citations)
-23. Advanced risk rules + trend view ("what changed this week")
-24. Goals
-25. iPad and Mac layouts (mostly navigation and multi-column work, since the domain layer is shared)
+20. On-device AI classification (Tier 1) layered onto the existing parser — available because of D1
+21. AI Chief of Staff (Tier 2, opt-in, tool-calling with citations)
+22. Advanced risk rules + trend view ("what changed this week")
+23. Goals
+24. iPad and Mac layouts (mostly navigation and multi-column work, since the domain layer is shared)
+
+**Removed from Phase 2 by D2:** the direct Google Calendar API. It returns only if one of the four CalDAV gaps in Section 6 becomes a real need — most likely free/busy lookup for scheduling assistance, or Meet link creation. That is a Phase 3 conversation with a concrete trigger, not a planned deliverable.
 
 ### Phase 3 — Extension
 
@@ -810,7 +866,8 @@ Your proposed roadmap is close. I am changing it in six places, and the reasons 
 27. Focus-mode integration
 28. Email integration (read-only capture from a forwarding address)
 29. Attachments and richer notes
-30. Collaboration and role permissions — **a re-architecture, not a feature.** See Risks.
+30. **The team decision point** (Appendix C) — evaluated after Phase 1 has been lived in, with three costed options rather than an assumption
+31. Google Calendar direct API — only if triggered (above)
 
 ---
 
@@ -838,10 +895,12 @@ CEO OS writes a reminder → EventKit fires a change notification → the app re
 `BGAppRefreshTask` runs when iOS feels like it. If notification scheduling depends on it, notifications will be missed.
 **Mitigation:** rolling 72-hour pre-scheduled window; all state computed on demand; background refresh treated purely as an optimisation. Also the 64-pending-notification cap forces the rolling window anyway.
 
-### R5 — Google OAuth in "Testing" mode expires refresh tokens after 7 days *(certain if misconfigured)*
+### R5 — Google calendars silently missing from EventKit *(high likelihood, medium impact)*
 
-An unverified external OAuth consent screen in testing status invalidates refresh tokens weekly. You would be re-authenticating every Monday forever.
-**Mitigation:** because you have a Google Workspace domain (`kambojventures.com`), create the OAuth client in a Workspace-owned Cloud project with **user type = Internal**. Internal apps skip verification entirely and do not expire refresh tokens. This is the single most important configuration detail of the Google integration.
+Under D2 this replaces the old OAuth risk. Google's CalDAV bridge only exposes calendars ticked at `google.com/calendar/syncselect`, and secondary and shared calendars are **off by default**. The failure is silent: the app shows a clean, plausible, incomplete schedule, and you make decisions against it. An incomplete calendar you believe is complete is worse than no calendar.
+**Mitigation:** Settings → Calendars lists every calendar EventKit can see with its source and event count, plus a direct link to syncselect and a one-line explanation. Also a light heuristic: if a meeting arrives by any other route (a capture, an attendee, an invitation) with no matching EventKit event, CEO OS raises a low-severity signal suggesting a calendar may not be synced. Secondary risks on the same route — a few minutes of CalDAV propagation lag, and no Meet links — are documented in Section 6 and accepted.
+
+*Retained for if D2 is ever revisited:* an unverified external OAuth consent screen in "testing" status invalidates refresh tokens weekly. Because `kambojventures.com` is a Workspace domain, the OAuth client would be created in a Workspace-owned Cloud project with **user type = Internal**, which skips verification and does not expire refresh tokens.
 
 ### R6 — EventKit permission granularity *(medium)*
 
@@ -873,10 +932,13 @@ One confident wrong answer about a delegation and you will never trust the AI la
 This database contains acquisition discussions, financials, and personnel matters across nine companies.
 **Mitigation:** zero third-party SDKs, no analytics, no crash-content upload, tokens device-only in Keychain, Tier 0/1 fully on-device, Tier 2 off by default behind an explicit per-field disclosure and an optional name-redaction mode.
 
-### R12 — Collaboration in Phase 3 is a re-architecture *(certain, if pursued)*
+### R12 — Team access is a likely future, and CloudKit private has no multi-user story *(now the highest-stakes open risk)*
 
-SwiftData + CloudKit private database has no multi-user story. Sharing means CloudKit shared zones (limited SwiftData support, significant model changes) or a real backend — plus a permissions model, an invitation flow, and server-side notifications.
-**Mitigation:** do not design Phase 1 around a hypothetical Phase 3. Keep the domain layer in `CEOOSKit` with no CloudKit assumptions leaking into it, so the persistence layer can be swapped for shared entities without touching business logic. Budget collaboration as a major project, not an increment.
+D3 upgrades this from hypothetical to probable. A SwiftData + CloudKit private database is single-account by construction. Real collaboration means either CloudKit sharing at zone granularity (limited SwiftData support, significant model changes) or a backend — plus authentication, a permissions model, an invitation flow, and server-side notifications. Retrofitting ownership and visibility onto a database with a year of records in it, across devices, in a schema that CloudKit only allows to change additively, is the genuinely expensive version of this.
+
+**Mitigation, and why the answer is still not "build a backend now":** a server-first architecture would delay the app being useful to you by months, add real hosting and security surface for acquisition and personnel data, and would be built for a user who does not exist yet — which is exactly the overengineering your first development rule forbids. Instead: the six hooks in Appendix C land in schema v1 at near-zero cost, keep the domain layer free of CloudKit assumptions, and make the team decision a real decision after Phase 1 rather than a bet taken now.
+
+**Residual risk, stated plainly:** if the team requirement turns out to mean *full CEO OS access for several people with roles and permissions*, that is a second product and should be budgeted as one. Appendix C's option C exists because that is usually not what "the team needs access" actually means.
 
 ### R13 — Schema churn during Phase 1 *(high likelihood, medium impact)*
 
@@ -900,34 +962,21 @@ SwiftData + CloudKit on watchOS is slow and battery-hungry for a database this s
 
 ---
 
-## SECTION 11 — QUESTIONS I ACTUALLY NEED ANSWERED
+## SECTION 11 — OPEN QUESTIONS
 
-Everything else in this document I have decided on your behalf. These eight genuinely change the architecture.
+**Nothing here blocks Phase 0 or Phase 1.** The three architectural questions are answered (D1–D3) and the three product questions I had recommendations for are adopted as defaults (D4–D6) — say the word if any of those defaults is wrong and they are cheap to change.
 
-**1. Minimum OS version — iOS 26+, or iOS 18+?**
-*Recommendation: iOS 26+.* You are the only user. Targeting the current OS unlocks the on-device Foundation Models framework (private AI classification with zero data egress), the newest App Intents capabilities, and lets me skip several compatibility branches. The only cost is that every device you use must be current.
+Two questions remain, both deliberately deferred to the point where they actually matter:
 
-**2. Are your Google calendars already synced into Apple Calendar on your iPhone?**
-This determines whether the Google Calendar integration is needed at all. If your Workspace account is added in iOS Settings → Calendar, EventKit already reads those events, and direct API integration only adds Google-side *writes* — which may not be worth the complexity, the OAuth surface, or the duplication risk.
+**Q1. Cloud AI — on-device only, or a redacted cloud tier?** *(needed at Phase 2, step 21)*
+D1 means the on-device Foundation Models tier is available, and it covers capture classification, update summarisation, and natural-language search with **nothing leaving the phone**. The only thing a cloud tier adds is a genuinely conversational Chief of Staff. If you want it, I also need to know whether name redaction (real Person and Company names replaced with stable pseudonyms in transit, reversed on display) should be the default. Ask me again when we reach Phase 2 and you have seen what the on-device tier actually does — it is a much better-informed decision then.
 
-**3. Google Cloud project — is `kambojventures.com` a Google Workspace domain you control the admin console for?**
-If yes, the OAuth client should be **Internal** user type, which avoids app verification and the 7-day refresh-token expiry (Risk R5). If no, we need a different token-refresh strategy.
+**Q2. Do you administer the `kambojventures.com` Google Workspace console?** *(only needed if D2 is revisited)*
+Relevant solely if one of the four CalDAV gaps in Section 6 forces the direct Google API. If you do administer it, the OAuth client is created as **Internal** user type, which avoids app verification and the 7-day refresh-token expiry. Worth knowing eventually; irrelevant today.
 
-**4. Cloud AI: on-device only, or is a redacted cloud tier acceptable?**
-On-device only means the Chief of Staff is more literal and less conversational, but nothing ever leaves your phone. If a cloud tier is acceptable, I need to know whether name redaction (real names replaced with stable pseudonyms in transit) should be the default.
+### One thing you should decide with your eyes open
 
-**5. Will anyone other than you ever need access?**
-Not "would it be nice" — will an assistant, a partner, or a project owner need to write into CEO OS? If the honest answer is yes within a year, we should keep an escape hatch in the persistence layer now. If it is no, the private-CloudKit design is materially simpler and I will commit to it.
-
-**6. Apple Reminders: which direction do you actually want?**
-Options: (a) **CEO OS → Reminders only** — mirror selected tasks out, accept completion back. Simplest, safest. (b) **Two-way with a dedicated inbox list** — you can also add via the Reminders app and it flows in. (c) **No Reminders integration** — CEO OS is the only task system.
-*Recommendation: (b)*, because Siri-to-Reminders is a habit you already have and it gives a capture path that works even if CEO OS is broken.
-
-**7. Top 3 — who picks them?**
-(a) You choose each morning from a proposed list *(recommended)*, (b) the system picks and you can override, or (c) you set them manually with no proposal. This changes how much the Attention Engine's ranking has to be trusted.
-
-**8. Delegation nudges — should CEO OS help you chase people?**
-When a delegated item is overdue, should the notification offer a **Nudge** action that opens a pre-filled iMessage/email to that person? It is the highest-leverage feature in the delegation system, but it means CEO OS composes outbound messages on your behalf (you still send them). Yes or no.
+**The team decision (Appendix C)** is not a question for today, but it is the one that gets expensive if it is answered late. The right moment is after you have lived on Phase 1 for a few weeks, because by then you will know something you cannot know now: whether "the team needs access" means *full CEO OS accounts* or just *the people I delegate to need to see and close their own items*. Those two answers differ by roughly an order of magnitude in cost, and the second one is far more common.
 
 ---
 
@@ -1010,6 +1059,38 @@ Confidence = min(component confidences).
 **The rule that matters: the raw `CaptureItem` is written to disk before parsing starts.** If parsing crashes, the network is down, or classification is wrong, the words you said are never lost. Everything after step 0 is an enhancement.
 
 Tier 1 (on-device Foundation Models) later runs *after* this parser and only fills gaps the deterministic path left empty. It never overrides a high-confidence deterministic match.
+
+---
+
+## APPENDIX C — TEAM READINESS (D3)
+
+Phase 1 ships single-user. These six hooks land in **schema v1**, cost almost nothing now, and are the things that are genuinely painful to add to a live CloudKit database later — because CloudKit schema changes are additive-only in production, and backfilling every record across every device is not a migration you want to run on a system you depend on daily.
+
+| # | Hook | Why now, not later |
+|---|---|---|
+| C1 | `ownerUserID` and `createdByUserID` on every entity, defaulting to your local user identifier | Adding an ownership column later means backfilling every record on every device. An unused string field costs nothing. |
+| C2 | `Person.userAccountID` (nullable) | The hook that turns a contact record into a person who can log in, without merging two tables later. Today it is always nil. |
+| C3 | Repository protocols in `CEOOSKit` — domain services take a repository, never a `ModelContext` | The persistence layer can be swapped for shared entities without touching the Attention Engine, the parser, or any intent. This is the difference between a port and a rewrite. |
+| C4 | **Company is the share unit.** Every shareable entity is reachable from a Company | CloudKit sharing works on record hierarchies. If a Project can exist without a Company, it can never be cleanly shared. Already true in the model — the job is keeping it true. |
+| C5 | `visibility` on Project, Task, Note, and Decision (`private` \| `company`), defaulting to `private` | Retrofitting a visibility policy across every query in the app is a large, error-prone change, and the failure mode is exposing something you did not intend. |
+| C6 | No denormalised caches that would need per-viewer values | A stored "my open task count" becomes wrong the moment a second person exists. This is already the rule from Section 6 — derived state is never stored — and it pays off twice. |
+
+Nothing above builds a multi-user feature. It removes the migrations that would otherwise stand between you and one.
+
+### The decision point, after Phase 1
+
+Three options, in ascending cost. Option C is the one people usually actually want.
+
+**Option C — Delegate hand-off, no accounts.** *(days, not months)*
+Your team never opens CEO OS. When you delegate, CEO OS sends a message or a link; when they reply or complete it, the item closes. Optionally a single shared, per-delegation CloudKit record so the delegate can mark their own item done from a lightweight view. This covers most of the real value of "the team needs access" — *people closing their own items and you not having to chase them* — without authentication, roles, or a backend.
+
+**Option B — CloudKit sharing, company-scoped.** *(weeks)*
+Each Company becomes a shared record zone; you invite people per company. Native, free, encrypted, no server. The costs are real: SwiftData's support for the shared database is more limited than for the private one, entity relationships must not cross zone boundaries, and the invitation and permission UI is yours to build. Viable if the team need is *a few people, read-mostly, scoped to one company each*.
+
+**Option A — A real backend.** *(months)*
+Authentication, an API, roles and permissions, a sync engine, server-side notifications, hosting, and a security posture appropriate for acquisition and personnel data. Correct only if CEO OS becomes a product several people work in daily, with roles. At that point it is a second product, and should be budgeted as one.
+
+**My recommendation, to be re-evaluated with real usage:** C, and probably only C. The problems in your original brief — forgetting what you delegated, not knowing who owes you what, follow-ups getting lost — are all solved by *you* having the system and *them* being able to close a single item. None of them require your team to have CEO OS.
 
 ---
 
